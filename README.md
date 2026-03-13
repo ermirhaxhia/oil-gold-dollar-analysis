@@ -256,4 +256,4 @@ Departamenti i Matematikës së Aplikuar · FSHN · Universiteti i Tiranës
 
 ---
 
-*Projekt akademik — Lënda: Proceset Stokastike · Universiteti i Tiranës · 2024–2025*
+*Lënda: Proceset Stokastike · Universiteti i Tiranës · FSHN · –2026*

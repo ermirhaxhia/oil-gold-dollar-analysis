@@ -1,0 +1,4 @@
+echo ".Rhistory" >> .gitignore
+echo ".RData" >> .gitignore
+echo "*.Rproj.user" >> .gitignore
+echo "app/rsconnect/" >> .gitignore
