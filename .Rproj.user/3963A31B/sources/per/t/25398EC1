@@ -1,0 +1,26 @@
+{
+    "id": "25398EC1",
+    "path": "~/oil-gold-dollar/analysis/01_import_clean.R",
+    "project_path": "analysis/01_import_clean.R",
+    "type": "r_source",
+    "hash": "3497898345",
+    "contents": "",
+    "dirty": false,
+    "created": 1773304205419.0,
+    "source_on_save": false,
+    "relative_order": 4,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "59,0",
+        "scrollLine": "52"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1772924244,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1772924244,
+    "read_only": false,
+    "read_only_alternatives": []
+}
