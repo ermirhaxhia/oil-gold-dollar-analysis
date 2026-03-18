@@ -215,10 +215,12 @@ ui <- page_navbar(
                      C_ACC, ",", C_GREEN, "); border-radius:2px;")
     ),
     tags$div(
-      tags$div("Lëvizja e Çmimit të Arit, Naftës dhe Indeksit të Dollarit",
+      tags$div("Ar · Naftë · Dollar",
+               class = "navbar-title-main",
                style = paste0("font-weight:700; font-size:0.95rem;",
                               " font-family:'JetBrains Mono',monospace; color:", TEXT, ";")),
-      tags$div("në Bursë në Kohë Krize dhe në Kohë Normale  |  2006 – 2024",
+      tags$div("Lëvizja e Çmimit në Bursë  |  2006 – 2024",
+               class = "navbar-subtitle",
                style = paste0("font-size:0.70rem; color:", MUTED, "; margin-top:1px;"))
     )
   ),
@@ -960,10 +962,11 @@ ui <- page_navbar(
       .container, .container-fluid { padding-left:10px; padding-right:10px; }
       .card-body { padding:0.6rem !important; }
       .layout-columns { gap:0.6rem !important; }
-      .navbar-brand { font-size:0.8rem !important; }
       .kpi-val { font-size:1.25rem !important; }
       h1, h2 { font-size:1.1rem !important; }
       .card-header { padding:0.6rem 0.75rem !important; }
+      .navbar-subtitle { display:none !important; }
+      .navbar-title-main { font-size:0.82rem !important; }
     }
     @media (max-width: 576px) {
       .layout-columns > * { flex: 0 0 100% !important; max-width:100% !important; }
