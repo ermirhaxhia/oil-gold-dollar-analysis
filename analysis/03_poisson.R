@@ -1,16 +1,16 @@
-library(dplyr)
-library(ggplot2)
+library(tidyverse)
+library(lubridate)
 
 # ── BLLOKU 1: LEXO TË DHËNAT ──────────────────────────
-master <- read.csv("data/clean/master_2006_2022.csv") |>
-  mutate(date = as.Date(date))
+master <- read_csv("data/clean/master_2006_2022.csv") |>
+  mutate(date = ymd(date))
 
 # ── BLLOKU 2: IDENTIFIKO KRIZAT ───────────────────────
 # Çfarë bën: shënon çdo muaj krizë si ngjarje Poisson (0 ose 1)
 kriza <- master |>
   mutate(
-    year      = format(date, "%Y"),
-    is_crisis = ifelse(regime == "Krize", 1, 0)
+    year      = year(date),
+    is_crisis = if_else(regime == "Krize", 1, 0)
   ) |>
   group_by(year) |>
   summarise(
@@ -44,7 +44,7 @@ max_k <- max(kriza$n_crisis)
 poisson_dist <- dpois(0:max_k, lambda) * nrow(kriza)
 
 cat("\nShpërndarja teorike Poisson:\n")
-theoretical <- data.frame(
+theoretical <- tibble(
   n_crisis    = 0:max_k,
   real        = as.numeric(table(factor(kriza$n_crisis,
                                         levels = 0:max_k))),
@@ -58,8 +58,7 @@ print(theoretical)
 # Bashkojmë 3+ kriza sepse Chi-Square kërkon min 5 obs/kategori
 
 kriza_grouped <- kriza |>
-  mutate(n_grouped = ifelse(n_crisis >= 3, "3+",
-                            as.character(n_crisis)))
+  mutate(n_grouped = if_else(n_crisis >= 3, "3+", as.character(n_crisis)))
 
 real_grouped <- table(kriza_grouped$n_grouped)
 
@@ -80,28 +79,35 @@ chisq_test <- chisq.test(
 cat("Testi Chi-Square (i korrigjuar):\n")
 cat("p-value =", round(chisq_test$p.value, 4), "\n")
 cat("Interpretim:",
-    ifelse(chisq_test$p.value > 0.05,
+    if_else(chisq_test$p.value > 0.05,
            "✅ Krizat ndjekin shpërndarje Poisson (p > 0.05)",
            "⚠️  Krizat NUK ndjekin plotësisht Poisson (p < 0.05)"), "\n")
 
 # ── BLLOKU 6: VIZUALIZIM ──────────────────────────────
-ggplot(theoretical, aes(x = factor(n_crisis))) +
-  geom_bar(aes(y = real, fill = "Reale"),
-           stat = "identity", alpha = 0.7, width = 0.4,
-           position = position_nudge(x = -0.2)) +
-  geom_bar(aes(y = theoretical, fill = "Poisson Teorike"),
-           stat = "identity", alpha = 0.7, width = 0.4,
-           position = position_nudge(x = 0.2)) +
-  scale_fill_manual(values = c("Reale"            = "#E74C3C",
-                               "Poisson Teorike"  = "#2980B9")) +
+# Përgatit të dhënat për ggplot (long format)
+theoretical_long <- theoretical |>
+  pivot_longer(
+    cols = c(real, theoretical),
+    names_to = "type",
+    values_to = "frequency"
+  ) |>
+  mutate(type = case_when(
+    type == "real" ~ "Reale",
+    type == "theoretical" ~ "Poisson Teorike"
+  ))
+
+ggplot(theoretical_long, aes(x = factor(n_crisis), y = frequency, fill = type)) +
+  geom_col(position = position_dodge(width = 0.8), alpha = 0.7, width = 0.7) +
+  scale_fill_manual(values = c("Reale" = "#E74C3C",
+                               "Poisson Teorike" = "#2980B9")) +
   labs(title    = "Krizat Ekonomike — Reale vs Poisson Teorike",
        subtitle = paste0("λ = ", round(lambda, 3), " kriza/vit  |  p-value = ",
                          round(chisq_test$p.value, 4)),
        x        = "Numri i Krizave për Vit",
        y        = "Frekuenca (vite)",
-       fill     = "") +
+       fill     = NULL) +
   theme_minimal() +
   theme(legend.position = "top")
 
-ggsave("output/04_poisson.png", width = 7, height = 5)
+ggsave("output/04_poisson.png", width = 7, height = 5, dpi = 300)
 cat("✅ Grafiku u ruajt në output/04_poisson.png\n")

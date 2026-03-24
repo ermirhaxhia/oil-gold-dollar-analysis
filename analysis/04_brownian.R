@@ -1,14 +1,12 @@
-library(dplyr)
-library(ggplot2)
+library(tidyverse)
+library(lubridate)
 
 # ── BLLOKU 1: LEXO DHE LLOGARIT LOG-KTHIMET ──────────
 # Çfarë bën: log-kthimet janë input i GBM
 # ln(S_t / S_t-1) — ndryshimi logaritmik mes dy muajve
 
-master <- read.csv("data/clean/master_2006_2022.csv") |>
-  mutate(date = as.Date(date))
-
-master <- master |>
+master <- read_csv("data/clean/master_2006_2022.csv") |>
+  mutate(date = ymd(date)) |>
   arrange(date) |>
   mutate(
     log_ret_oil  = log(price_wti  / lag(price_wti)),
@@ -20,18 +18,17 @@ master <- master |>
 # ── KONTROLLO ─────────────────────────────────────────
 cat("Numri i observimeve:", nrow(master), "\n")
 cat("\nLog-kthimet e para:\n")
-head(master[, c("date", "log_ret_oil", 
-                "log_ret_gold", "log_ret_dxy")], 5)
-
-
-
+master |>
+  select(date, log_ret_oil, log_ret_gold, log_ret_dxy) |>
+  head(5) |>
+  print()
 
 # ── BLLOKU 2: ESTIMO PARAMETRAT GBM ──────────────────
 # Çfarë bën: gjen μ (drift) dhe σ (volatilitet) për çdo asset
 # μ = mesatarja e log-kthimeve mujore
 # σ = devijimi standard i log-kthimeve mujore
 
-params <- data.frame(
+params <- tibble(
   asset = c("Naftë (WTI)", "Ar (Gold)", "Dollar (DXY)"),
   
   # Drift — trend mujor
@@ -52,31 +49,32 @@ params <- data.frame(
     sigma = round(sigma, 4)
   )
 
-cat("Parametrat GBM:\n")
+cat("\nParametrat GBM:\n")
 print(params)
-
-
 
 # ── BLLOKU 3: MATRICA E KORRELACIONIT ────────────────
 # Çfarë bën: mat lidhjen midis lëvizjeve të 3 asseteve
 # +1 = lëvizin bashkë, -1 = lëvizin kundër, 0 = të pavarur
 
-cor_matrix <- cor(master[, c("log_ret_oil",
-                             "log_ret_gold",
-                             "log_ret_dxy")])
+cor_matrix <- master |>
+  select(log_ret_oil, log_ret_gold, log_ret_dxy) |>
+  cor() |>
+  `rownames<-`(c("Naftë", "Ar", "Dollar")) |>
+  `colnames<-`(c("Naftë", "Ar", "Dollar"))
 
-rownames(cor_matrix) <- c("Naftë", "Ar", "Dollar")
-colnames(cor_matrix) <- c("Naftë", "Ar", "Dollar")
-
-cat("Matrica e Korrelacionit:\n")
+cat("\nMatrica e Korrelacionit:\n")
 print(round(cor_matrix, 3))
 
 # ── VIZUALIZIM — HEATMAP ──────────────────────────────
-library(reshape2)
+cor_tibble <- cor_matrix |>
+  as_tibble(rownames = "var1") |>
+  pivot_longer(
+    cols = -var1,
+    names_to = "var2",
+    values_to = "value"
+  )
 
-cor_melt <- melt(cor_matrix)
-
-ggplot(cor_melt, aes(x = Var1, y = Var2, fill = value)) +
+ggplot(cor_tibble, aes(x = var1, y = var2, fill = value)) +
   geom_tile(color = "white", linewidth = 1) +
   geom_text(aes(label = round(value, 3)),
             size = 5, fontface = "bold") +
@@ -93,11 +91,8 @@ ggplot(cor_melt, aes(x = Var1, y = Var2, fill = value)) +
   theme_minimal() +
   theme(axis.text = element_text(size = 12, face = "bold"))
 
-ggsave("output/05_correlation.png", width = 6, height = 5)
+ggsave("output/05_correlation.png", width = 6, height = 5, dpi = 300)
 cat("✅ Heatmap u ruajt në output/05_correlation.png\n")
-
-
-
 
 # ── BLLOKU 4: TESTO NORMALITETIN ─────────────────────
 # Çfarë bën: GBM supozon që log-kthimet janë normale
@@ -107,23 +102,17 @@ shapiro_oil  <- shapiro.test(master$log_ret_oil)
 shapiro_gold <- shapiro.test(master$log_ret_gold)
 shapiro_dxy  <- shapiro.test(master$log_ret_dxy)
 
-cat("Testi Shapiro-Wilk (normaliteti):\n\n")
+cat("\nTesti Shapiro-Wilk (normaliteti):\n\n")
 cat("Naftë  — p-value:", round(shapiro_oil$p.value,  4), 
-    ifelse(shapiro_oil$p.value  > 0.05, "✅ Normale", "⚠️  Jo normale"), "\n")
+    if_else(shapiro_oil$p.value  > 0.05, "✅ Normale", "⚠️  Jo normale"), "\n")
 cat("Ar     — p-value:", round(shapiro_gold$p.value, 4),
-    ifelse(shapiro_gold$p.value > 0.05, "✅ Normale", "⚠️  Jo normale"), "\n")
+    if_else(shapiro_gold$p.value > 0.05, "✅ Normale", "⚠️  Jo normale"), "\n")
 cat("Dollar — p-value:", round(shapiro_dxy$p.value,  4),
-    ifelse(shapiro_dxy$p.value  > 0.05, "✅ Normale", "⚠️  Jo normale"), "\n")
-
-
-
+    if_else(shapiro_dxy$p.value  > 0.05, "✅ Normale", "⚠️  Jo normale"), "\n")
 
 # ── BLLOKU 5: VIZUALIZIM LOG-KTHIME ──────────────────
 # Histogram + kurba normale teorike për çdo asset
 
-library(tidyr)
-
-# Ristrukturoj për ggplot
 returns_long <- master |>
   select(date, log_ret_oil, log_ret_gold, log_ret_dxy) |>
   pivot_longer(
@@ -134,8 +123,7 @@ returns_long <- master |>
   mutate(asset = recode(asset,
                         "log_ret_oil"  = "Naftë (WTI)",
                         "log_ret_gold" = "Ar (Gold)",
-                        "log_ret_dxy"  = "Dollar (DXY)"
-  ))
+                        "log_ret_dxy"  = "Dollar (DXY)"))
 
 ggplot(returns_long, aes(x = return)) +
   geom_histogram(aes(y = after_stat(density)),
@@ -157,5 +145,5 @@ ggplot(returns_long, aes(x = return)) +
   ) +
   theme_minimal()
 
-ggsave("output/06_distributions.png", width = 10, height = 4)
+ggsave("output/06_distributions.png", width = 10, height = 4, dpi = 300)
 cat("✅ Grafiku u ruajt në output/06_distributions.png\n")

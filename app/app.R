@@ -1,13 +1,13 @@
 library(shiny)
 library(bslib)
 library(plotly)
-library(dplyr)
+library(tidyverse)
+library(lubridate)
 library(visNetwork)
 library(DT)
 library(echarts4r)
 library(shinyWidgets)
 library(shinycssloaders)
-library(lubridate)
 library(rlang)
 library(bsicons)
 
@@ -64,8 +64,8 @@ my_theme <- bs_theme(
 # ══════════════════════════════════════════════════════
 #  NGARKIMI I TË DHËNAVE
 # ══════════════════════════════════════════════════════
-master <- read.csv("data/master_2006_2022.csv") |>
-  mutate(date = as.Date(date))
+master <- read_csv("data/master_2006_2022.csv") |>
+  mutate(date = ymd(date))
 
 # ══════════════════════════════════════════════════════
 #  FUNKSIONE NDIHMËSE
@@ -115,7 +115,6 @@ kpi_card <- function(id, label, color, description) {
 }
 
 # ── FOOTER ────────────────────────────────────────────
-# Vendos kontaktet e tua këtu:
 AUTHOR_EMAIL    <- "ermir.haxhia10@gmail.com"
 AUTHOR_GITHUB   <- "https://github.com/ermirhaxhia"
 AUTHOR_LINKEDIN <- "https://www.linkedin.com/in/ermir-haxhia-b988212b5"
@@ -130,7 +129,6 @@ make_footer <- function() {
     ),
     div(
       class = "d-flex flex-wrap justify-content-between align-items-start gap-3",
-      # Blloku i majtë — identiteti
       div(
         tags$p("Ermir Haxhia",
                style = paste0("font-family:'JetBrains Mono',monospace;",
@@ -141,10 +139,8 @@ make_footer <- function() {
         tags$p("Departamenti i Matematikës së Aplikuar · FSHN · Universiteti i Tiranës",
                style = paste0("font-size:0.78rem; color:", MUTED, "; margin:0;"))
       ),
-      # Blloku i djathtë — linqet
       div(
         class = "d-flex gap-3 align-items-center flex-wrap",
-        # Email
         tags$a(
           href    = paste0("mailto:", AUTHOR_EMAIL),
           title   = "Email",
@@ -160,7 +156,6 @@ make_footer <- function() {
           tags$span(style = paste0("color:", C_ACC, "; font-weight:600;"), "Email"),
           tags$span(AUTHOR_EMAIL, style = paste0("color:", MUTED, ";"))
         ),
-        # GitHub
         tags$a(
           href    = AUTHOR_GITHUB,
           target  = "_blank",
@@ -177,7 +172,6 @@ make_footer <- function() {
           tags$span(style = paste0("color:", C_GREEN, "; font-weight:600;"), "GitHub"),
           tags$span("ermirhaxhia", style = paste0("color:", MUTED, ";"))
         ),
-        # LinkedIn
         tags$a(
           href    = AUTHOR_LINKEDIN,
           target  = "_blank",
@@ -232,7 +226,6 @@ ui <- page_navbar(
   # ── TAB 0 · ABSTRAKT ─────────────────────────────────
   nav_panel("Abstrakt",
             div(class = "container py-4",
-                # Hero header
                 div(class = "text-center mb-5",
                     tags$h1("Lëvizja e Çmimit të Arit, Naftës dhe Indeksit të Dollarit në Bursë në Kohë Krize dhe në Kohë Normale",
                             style = paste0("font-family:'JetBrains Mono',monospace;",
@@ -243,7 +236,6 @@ ui <- page_navbar(
                                        C_ACC, ",", C_GREEN, "); margin:16px auto 0; border-radius:2px;"))
                 ),
                 
-                # Abstrakt
                 card(
                   style = paste0("background:", CARD, "; border:1px solid ", BORDER,
                                  "; border-left:4px solid ", C_ACC, "; border-radius:8px;"),
@@ -267,7 +259,6 @@ ui <- page_navbar(
                 
                 div(class = "mt-4"),
                 
-                # Autorët + Burimet
                 layout_columns(
                   col_widths = c(5, 7),
                   card(
@@ -386,7 +377,6 @@ ui <- page_navbar(
                 
                 div(class = "mt-4"),
                 
-                # Tabela e të dhënave
                 card(
                   style = paste0("background:", CARD, "; border:1px solid ", BORDER, "; border-radius:8px;"),
                   card_header(
@@ -426,8 +416,8 @@ ui <- page_navbar(
                     "prodhuan rënie dramatike të naftës, ndërsa ari lëvizi si aktiv mbrojtës (safe-haven)."
                   ),
                   sliderInput("date_range", NULL,
-                              min = as.Date("2006-01-01"), max = as.Date("2022-01-01"),
-                              value = c(as.Date("2006-01-01"), as.Date("2022-01-01")),
+                              min = ymd("2006-01-01"), max = ymd("2022-01-01"),
+                              value = c(ymd("2006-01-01"), ymd("2022-01-01")),
                               timeFormat = "%Y-%m", width = "100%"),
                   plotlyOutput("main_chart", height = "400px") |> withSpinner(color = C_ACC)
                 )
@@ -757,8 +747,8 @@ ui <- page_navbar(
                 ),
                 div(class = "mt-2"),
                 sliderInput("corr_range", NULL,
-                            min = as.Date("2006-01-01"), max = as.Date("2022-01-01"),
-                            value = c(as.Date("2006-01-01"), as.Date("2022-01-01")),
+                            min = ymd("2006-01-01"), max = ymd("2022-01-01"),
+                            value = c(ymd("2006-01-01"), ymd("2022-01-01")),
                             timeFormat = "%Y-%m", width = "100%"),
                 layout_columns(
                   col_widths = c(5, 7),
@@ -812,7 +802,6 @@ ui <- page_navbar(
                                        C_ACC, ",", C_GREEN, "); margin:12px auto 0; border-radius:2px;"))
                 ),
                 
-                # Gjashtë blloqe konkluzionesh
                 layout_columns(
                   col_widths = c(6, 6),
                   
@@ -982,7 +971,7 @@ server <- function(input, output, session) {
   # ── TAB 0: ABSTRAKT ───────────────────────────────
   output$abstract_table <- renderDT({
     d <- master |>
-      dplyr::select(date, price_wti, price_gold, dxy) |>
+      select(date, price_wti, price_gold, dxy) |>
       rename(
         "Data"                = date,
         "Nafta WTI ($/bbl)"  = price_wti,
@@ -1037,9 +1026,9 @@ server <- function(input, output, session) {
   })
   
   # ── TAB 1: KPI ────────────────────────────────────
-  output$kpi_oil  <- renderText(paste0("$", format(round(tail(master$price_wti, 1),  2), big.mark=",")))
-  output$kpi_gold <- renderText(paste0("$", format(round(tail(master$price_gold, 1), 2), big.mark=",")))
-  output$kpi_dxy  <- renderText(format(round(tail(master$dxy, 1), 2), nsmall=2))
+  output$kpi_oil  <- renderText(paste0("$", format(round(last(master$price_wti),  2), big.mark=",")))
+  output$kpi_gold <- renderText(paste0("$", format(round(last(master$price_gold), 2), big.mark=",")))
+  output$kpi_dxy  <- renderText(format(round(last(master$dxy), 2), nsmall=2))
   
   output$main_chart <- renderPlotly({
     d <- filtered_master()
@@ -1096,7 +1085,7 @@ server <- function(input, output, session) {
   reg_colors <- c(C_OIL, C_GREEN, C_GOLD, C_DXY)
   
   output$network_plot <- renderVisNetwork({
-    nodes <- data.frame(
+    nodes <- tibble(
       id             = 1:4,
       label          = reg_labels,
       color.background = reg_colors,
@@ -1109,23 +1098,21 @@ server <- function(input, output, session) {
       font.face      = "bold",
       shadow         = TRUE
     )
-    edges_df <- data.frame()
-    for (i in 1:4) for (j in 1:4) {
-      prob <- P_mat[i, j]
-      if (prob >= 0.05) {
-        edges_df <- rbind(edges_df, data.frame(
-          from  = i, to = j,
-          value = prob * 10,
-          label = paste0(round(prob * 100), "%"),
-          arrows = "to",
-          color.color     = "rgba(229,231,235,0.4)",
-          color.highlight = "white",
-          font.color      = TEXT,
-          font.size       = 10,
-          smooth          = TRUE
-        ))
-      }
-    }
+    
+    edges_df <- crossing(from = 1:4, to = 1:4) |>
+      mutate(prob = map2_dbl(from, to, ~ P_mat[.x, .y])) |>
+      filter(prob >= 0.05) |>
+      mutate(
+        value = prob * 10,
+        label = paste0(round(prob * 100), "%"),
+        arrows = "to",
+        color.color = "rgba(229,231,235,0.4)",
+        color.highlight = "white",
+        font.color = TEXT,
+        font.size = 10,
+        smooth = TRUE
+      )
+    
     visNetwork(nodes, edges_df, background = BG) |>
       visEdges(width=2, scaling=list(min=1, max=9)) |>
       visPhysics(solver="forceAtlas2Based",
@@ -1135,22 +1122,23 @@ server <- function(input, output, session) {
   })
   
   output$table_P <- renderDT({
-    df <- as.data.frame(round(P_mat, 3))
-    colnames(df) <- reg_labels; rownames(df) <- reg_labels
+    df <- as_tibble(round(P_mat, 3), .name_repair = ~ reg_labels) |>
+      mutate(!!sym("") := reg_labels, .before = 1)
+    
     datatable(df,
               options = list(dom="t", pageLength=4, ordering=FALSE),
               class   = "compact",
-              rownames = TRUE) |>
-      formatRound(columns=1:4, digits=3)
+              rownames = FALSE) |>
+      formatRound(columns=2:5, digits=3)
   })
   
   output$regime_timeline <- renderPlotly({
     d <- master |> arrange(date) |>
-      mutate(regime_label = dplyr::recode(regime,
-                                          "Krize"       = "Krizë",
-                                          "Normal"      = "Normal",
-                                          "Recesion"    = "Recesion",
-                                          "Stagflacion" = "Stagflacion"
+      mutate(regime_label = recode(regime,
+                                   "Krize"       = "Krizë",
+                                   "Normal"      = "Normal",
+                                   "Recesion"    = "Recesion",
+                                   "Stagflacion" = "Stagflacion"
       ))
     
     reg_col <- c(
@@ -1162,7 +1150,6 @@ server <- function(input, output, session) {
     
     p <- plot_ly()
     
-    # Vija gri e hollë si sfond — ecuria e plotë
     p <- add_trace(p,
                    data = d, x = ~date, y = ~price_wti,
                    type = "scatter", mode = "lines",
@@ -1171,7 +1158,6 @@ server <- function(input, output, session) {
                    hoverinfo = "none", showlegend = FALSE
     )
     
-    # Pikat e ngjyrosura sipas regjimit
     for (reg in names(reg_col)) {
       dd <- d |> filter(regime_label == reg)
       if (nrow(dd) == 0) next
@@ -1205,8 +1191,12 @@ server <- function(input, output, session) {
   })
   
   # ── TAB 3: POISSON ────────────────────────────────
-  crisis_data   <- reactive({ master |> mutate(year=format(date,"%Y"), is_crisis=as.integer(regime=="Krize")) })
-  kriza_per_vit <- reactive({ crisis_data() |> group_by(year) |> summarise(n_crisis=sum(is_crisis), .groups="drop") })
+  crisis_data   <- reactive({ 
+    master |> mutate(year = year(date), is_crisis = as.integer(regime == "Krize")) 
+  })
+  kriza_per_vit <- reactive({ 
+    crisis_data() |> group_by(year) |> summarise(n_crisis = sum(is_crisis), .groups = "drop") 
+  })
   lambda_val    <- reactive({ mean(kriza_per_vit()$n_crisis) })
   
   output$vbox_lambda  <- renderText(round(lambda_val(), 3))
@@ -1240,9 +1230,9 @@ server <- function(input, output, session) {
   output$plot_poisson_dist <- renderEcharts4r({
     lam   <- lambda_val()
     max_k <- max(kriza_per_vit()$n_crisis)
-    data.frame(
+    tibble(
       n       = 0:max_k,
-      real    = as.numeric(table(factor(kriza_per_vit()$n_crisis, levels=0:max_k))),
+      real    = as.numeric(table(factor(kriza_per_vit()$n_crisis, levels = 0:max_k))),
       teorike = round(dpois(0:max_k, lam) * nrow(kriza_per_vit()), 2)
     ) |>
       e_charts(n) |>
@@ -1259,7 +1249,7 @@ server <- function(input, output, session) {
   
   output$table_crisis <- renderDT({
     kriza_per_vit() |>
-      rename(Viti="year", "Muaj Krizë"="n_crisis") |>
+      rename(Viti = year, "Muaj Krizë" = n_crisis) |>
       datatable(options=list(dom="t", pageLength=17, ordering=FALSE),
                 class="compact", rownames=FALSE) |>
       formatStyle("Muaj Krizë",
@@ -1279,13 +1269,12 @@ server <- function(input, output, session) {
   output$asset_stats <- renderTable({
     col  <- switch(input$asset_select, "oil"="log_ret_oil", "gold"="log_ret_gold", "dxy"="log_ret_dxy")
     vals <- log_ret()[[col]] * 100
-    data.frame(
+    tibble(
       Statistika = c("Mesatare","Std. Dev","Min","Max","Skewness","Kurtosis"),
       `Vlerë %`  = c(round(mean(vals),3), round(sd(vals),3),
                      round(min(vals),3),  round(max(vals),3),
                      round(mean((vals-mean(vals))^3)/sd(vals)^3,3),
-                     round(mean((vals-mean(vals))^4)/sd(vals)^4,3)),
-      check.names = FALSE
+                     round(mean((vals-mean(vals))^4)/sd(vals)^4,3))
     )
   }, striped=TRUE, hover=TRUE, spacing="xs")
   
@@ -1304,7 +1293,7 @@ server <- function(input, output, session) {
   })
   
   output$plot_cor_heatmap <- renderPlotly({
-    cm <- cor(log_ret()[, c("log_ret_oil","log_ret_gold","log_ret_dxy")])
+    cm <- log_ret() |> select(log_ret_oil, log_ret_gold, log_ret_dxy) |> cor()
     labs <- c("Naftë","Ar","Dollar")
     plot_ly(x=labs, y=labs, z=round(cm,3), type="heatmap",
             colorscale=list(c(0,C_OIL), c(0.5,"#374151"), c(1,C_DXY)),
@@ -1322,7 +1311,7 @@ server <- function(input, output, session) {
     vals  <- log_ret()[[col]]
     color <- switch(input$asset_select, "oil"=C_OIL, "gold"=C_GOLD, "dxy"=C_DXY)
     h     <- hist(vals, breaks=30, plot=FALSE)
-    data.frame(
+    tibble(
       x      = h$mids,
       y_real = h$density,
       y_norm = dnorm(h$mids, mean=mean(vals), sd=sd(vals))
@@ -1349,8 +1338,8 @@ server <- function(input, output, session) {
   })
   
   S0_reactive <- reactive({
-    mt <- read.csv("data/master_2022_2024.csv") |> mutate(date=as.Date(date))
-    list(oil=tail(mt$price_wti,1), gold=tail(mt$price_gold,1), dxy=tail(mt$dxy,1))
+    mt <- read_csv("data/master_2022_2024.csv") |> mutate(date = ymd(date))
+    list(oil = last(mt$price_wti), gold = last(mt$price_gold), dxy = last(mt$dxy))
   })
   
   simulate_paths <- function(s0, mu, sigma, T, n_sim, apply_shock, shock_val, lambda=1.588) {
@@ -1423,10 +1412,10 @@ server <- function(input, output, session) {
   output$download_sim <- downloadHandler(
     filename = function() paste0("monte_carlo_", input$monte_asset, "_", Sys.Date(), ".csv"),
     content  = function(file) {
-      df <- as.data.frame(sim_paths())
+      df <- as_tibble(sim_paths())
       colnames(df) <- paste0("sim_", seq_len(ncol(df)))
       df$muaji <- 0:12
-      write.csv(df, file, row.names=FALSE)
+      write_csv(df, file)
     }
   )
   
@@ -1445,7 +1434,7 @@ server <- function(input, output, session) {
   output$plot_coef <- renderPlotly({
     ci <- confint(ols_model())
     cf <- coef(ols_model())
-    df <- data.frame(
+    df <- tibble(
       term = c("Intercept","Oil (WTI)","Dollar (DXY)"),
       est  = as.numeric(cf),
       lo   = as.numeric(ci[,1]),
@@ -1470,10 +1459,11 @@ server <- function(input, output, session) {
   
   output$table_ols <- renderDT({
     s  <- summary(ols_model())
-    df <- as.data.frame(s$coefficients)
-    df$Variable <- c("Intercept","Oil (WTI)","Dollar (DXY)")
-    df <- df[, c("Variable","Estimate","Std. Error","t value","Pr(>|t|)")]
-    colnames(df) <- c("Variable","β","Std. Error","t-val","p-value")
+    df <- as_tibble(s$coefficients, rownames = "Variable")
+    df <- df |> 
+      select(Variable, Estimate, `Std. Error`, `t value`, `Pr(>|t|)`) |>
+      rename(β = Estimate, `Std. Error` = `Std. Error`, `t-val` = `t value`, `p-value` = `Pr(>|t|)`)
+    
     datatable(df, options=list(dom="t", ordering=FALSE), rownames=FALSE,
               class="compact") |>
       formatRound(columns=c("β","Std. Error","t-val"), digits=4) |>
@@ -1494,7 +1484,7 @@ server <- function(input, output, session) {
       b_oil[i] <- coef(fit)["price_wti"]
       b_dxy[i] <- coef(fit)["dxy"]
     }
-    df <- data.frame(date=dates, b_oil=b_oil, b_dxy=b_dxy)
+    df <- tibble(date=dates, b_oil=b_oil, b_dxy=b_dxy)
     plot_ly(df, x=~date) |>
       add_trace(y=~b_oil, type="scatter", mode="lines", name="β Oil",
                 line=list(color=C_OIL, width=2)) |>
@@ -1508,7 +1498,7 @@ server <- function(input, output, session) {
   })
   
   output$plot_resid <- renderPlotly({
-    df <- data.frame(date=master$date, r=residuals(ols_model()))
+    df <- tibble(date=master$date, r=residuals(ols_model()))
     plot_ly(df, x=~date, y=~r, type="scatter", mode="markers",
             marker=list(color=C_OIL, size=4, opacity=0.45),
             hovertemplate="%{x}<br>Residual: %{y:.2f}<extra></extra>") |>
@@ -1523,7 +1513,7 @@ server <- function(input, output, session) {
     log_ret() |> filter(date >= input$corr_range[1], date <= input$corr_range[2])
   })
   corr_mat <- reactive({
-    cor(corr_data()[, c("log_ret_oil","log_ret_gold","log_ret_dxy")])
+    corr_data() |> select(log_ret_oil, log_ret_gold, log_ret_dxy) |> cor()
   })
   
   output$vbox_cor_oil_gold <- renderText(round(corr_mat()["log_ret_oil","log_ret_gold"], 3))
@@ -1548,7 +1538,7 @@ server <- function(input, output, session) {
     d       <- corr_data()
     lm_fit  <- lm(log_ret_gold ~ log_ret_oil, data=d)
     x_range <- seq(min(d$log_ret_oil), max(d$log_ret_oil), length.out=60)
-    y_pred  <- predict(lm_fit, newdata=data.frame(log_ret_oil=x_range))
+    y_pred  <- predict(lm_fit, newdata=tibble(log_ret_oil=x_range))
     
     plot_ly() |>
       add_trace(data=d, x=~log_ret_oil, y=~log_ret_gold,
@@ -1576,7 +1566,7 @@ server <- function(input, output, session) {
       sub  <- lr[i:(i+win-1), cols]
       rc[i] <- cor(sub[,1], sub[,2])
     }
-    df <- data.frame(date=dates, rho=rc)
+    df <- tibble(date=dates, rho=rc)
     plot_ly(df, x=~date, y=~rho, type="scatter", mode="lines",
             line=list(color=col, width=2),
             fill="tozeroy", fillcolor=paste0(col,"22"),

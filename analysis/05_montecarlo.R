@@ -1,14 +1,12 @@
-library(dplyr)
-library(ggplot2)
+library(tidyverse)
+library(lubridate)
 library(MASS)
+library(purrr)
 
 # ── BLLOKU 1: NGARKO PARAMETRAT ───────────────────────
 # Lexo të dhënat e trajnimit 2006-2022
-master <- read.csv("data/clean/master_2006_2022.csv") |>
-  mutate(date = as.Date(date))
-
-# Llogarit log-kthimet
-master <- master |>
+master <- read_csv("data/clean/master_2006_2022.csv") |>
+  mutate(date = ymd(date)) |>
   arrange(date) |>
   mutate(
     log_ret_oil  = log(price_wti  / lag(price_wti)),
@@ -18,41 +16,27 @@ master <- master |>
   filter(!is.na(log_ret_oil))
 
 # Parametrat GBM
-mu_oil  <- mean(master$log_ret_oil)
-mu_gold <- mean(master$log_ret_gold)
-mu_dxy  <- mean(master$log_ret_dxy)
-
-sigma_oil  <- sd(master$log_ret_oil)
-sigma_gold <- sd(master$log_ret_gold)
-sigma_dxy  <- sd(master$log_ret_dxy)
+params_gbm <- tibble(
+  asset = c("oil", "gold", "dxy"),
+  mu    = c(mean(master$log_ret_oil), mean(master$log_ret_gold), mean(master$log_ret_dxy)),
+  sigma = c(sd(master$log_ret_oil), sd(master$log_ret_gold), sd(master$log_ret_dxy)),
+  S0    = c(tail(master$price_wti, 1), tail(master$price_gold, 1), tail(master$dxy, 1))
+)
 
 # Matrica e korrelacionit
-cor_matrix <- cor(master[, c("log_ret_oil",
-                             "log_ret_gold",
-                             "log_ret_dxy")])
+cor_matrix <- master |>
+  select(log_ret_oil, log_ret_gold, log_ret_dxy) |>
+  cor()
 
 # Lambda nga Poisson
 lambda <- 1.588
 
-# Çmimet e fundit të 2022 — pikënisja e simulimit
-S0_oil  <- tail(master$price_wti,  1)
-S0_gold <- tail(master$price_gold, 1)
-S0_dxy  <- tail(master$dxy,        1)
-
 cat("✅ Parametrat u ngarkuan:\n")
-cat("   μ oil:", round(mu_oil, 4), "| σ oil:", round(sigma_oil, 4), "\n")
-cat("   μ gold:", round(mu_gold, 4), "| σ gold:", round(sigma_gold, 4), "\n")
-cat("   μ dxy:", round(mu_dxy, 4), "| σ dxy:", round(sigma_dxy, 4), "\n")
+params_gbm |>
+  mutate(across(c(mu, sigma), ~ round(., 4))) |>
+  print()
+
 cat("   λ =", lambda, "\n")
-cat
-
-
-
-
-
-
-
-
 
 # ── BLLOKU 2: FUNKSIONI I SIMULIMIT ───────────────────
 # Çfarë bën: simulon T muaj çmimesh me GBM + korrelacion
@@ -66,9 +50,7 @@ simulate_paths <- function(S0_oil, S0_gold, S0_dxy,
   
   # Matrica e kovariancës për gjenero lëvizje të lidhura
   sigma_vec <- c(sigma_oil, sigma_gold, sigma_dxy)
-  cov_matrix <- diag(sigma_vec) %*% 
-    cor_matrix %*% 
-    diag(sigma_vec)
+  cov_matrix <- diag(sigma_vec) %*% cor_matrix %*% diag(sigma_vec)
   
   # Rezultatet — çmimi final i çdo skenari
   results <- matrix(0, nrow = n_sim, ncol = 3)
@@ -77,14 +59,14 @@ simulate_paths <- function(S0_oil, S0_gold, S0_dxy,
   for (i in 1:n_sim) {
     
     # Gjenero T lëvizje të lidhura (multivariate normal)
-    shocks <- mvrnorm(n    = T,
-                      mu   = c(0, 0, 0),
-                      Sigma = cov_matrix)
+    shocks <- mvrnorm(n = T, mu = c(0, 0, 0), Sigma = cov_matrix)
     
     # GBM — llogarit çmimin për çdo muaj
-    oil_path  <- S0_oil
-    gold_path <- S0_gold
-    dxy_path  <- S0_dxy
+    paths <- tibble(
+      oil  = S0_oil,
+      gold = S0_gold,
+      dxy  = S0_dxy
+    )
     
     for (t in 1:T) {
       
@@ -92,7 +74,6 @@ simulate_paths <- function(S0_oil, S0_gold, S0_dxy,
       crisis <- rbinom(1, 1, prob = lambda / 12)
       
       # Nëse kemi krizë dhe crisis_shock = TRUE
-      # injektojmë shok shtesë (simulimi Hormuz)
       extra_shock <- if (crisis_shock && crisis == 1) {
         c(+0.20, -0.05, +0.08)  # nafta ↑20%, ari ↓5%, dollar ↑8%
       } else {
@@ -100,28 +81,23 @@ simulate_paths <- function(S0_oil, S0_gold, S0_dxy,
       }
       
       # GBM: S_t = S_{t-1} * exp(μ - σ²/2 + σε)
-      oil_path  <- oil_path  * exp((mu_oil  - 0.5*sigma_oil^2)  +
-                                     shocks[t,1] + extra_shock[1])
-      gold_path <- gold_path * exp((mu_gold - 0.5*sigma_gold^2) +
-                                     shocks[t,2] + extra_shock[2])
-      dxy_path  <- dxy_path  * exp((mu_dxy  - 0.5*sigma_dxy^2)  +
-                                     shocks[t,3] + extra_shock[3])
+      paths <- paths |>
+        mutate(
+          oil  = oil  * exp((mu_oil  - 0.5*sigma_oil^2)  + shocks[t,1] + extra_shock[1]),
+          gold = gold * exp((mu_gold - 0.5*sigma_gold^2) + shocks[t,2] + extra_shock[2]),
+          dxy  = dxy  * exp((mu_dxy  - 0.5*sigma_dxy^2)  + shocks[t,3] + extra_shock[3])
+        )
     }
     
-    results[i,] <- c(oil_path, gold_path, dxy_path)
+    results[i,] <- as.numeric(paths)
   }
   
-  return(as.data.frame(results))
+  return(as_tibble(results))
 }
 
 cat("✅ Funksioni i simulimit është gati\n")
 cat("   Parametrat: T muaj, n_sim skenarë\n")
 cat("   Shok krize: P(krizë/muaj) =", round(lambda/12, 3), "\n")
-
-
-
-
-
 
 # ── BLLOKU 3: SIMULIMI 2022-2024 ─────────────────────
 # Çfarë bën: simulon 24 muaj (2022-2024) dhe krahason
@@ -129,16 +105,16 @@ cat("   Shok krize: P(krizë/muaj) =", round(lambda/12, 3), "\n")
 
 set.seed(42)  # për riprodhueshmëri
 n_sim <- 10000
-T     <- 24   # 24 muaj = 2 vjet
+T <- 24   # 24 muaj = 2 vjet
 
-cat("Duke simuluar", n_sim, "skenarë për", T, "muaj...\n")
+cat("\nDuke simuluar", n_sim, "skenarë për", T, "muaj...\n")
 
 sim_results <- simulate_paths(
-  S0_oil, S0_gold, S0_dxy,
-  mu_oil, mu_gold, mu_dxy,
-  sigma_oil, sigma_gold, sigma_dxy,
+  params_gbm$S0[1], params_gbm$S0[2], params_gbm$S0[3],
+  params_gbm$mu[1], params_gbm$mu[2], params_gbm$mu[3],
+  params_gbm$sigma[1], params_gbm$sigma[2], params_gbm$sigma[3],
   cor_matrix,
-  T     = T,
+  T = T,
   n_sim = n_sim,
   crisis_shock = FALSE
 )
@@ -146,68 +122,77 @@ sim_results <- simulate_paths(
 # ── STATISTIKAT E SIMULIMIT ───────────────────────────
 cat("\n📊 Rezultatet e Simulimit 2022-2024:\n\n")
 
-# Nafta
-cat("🛢️  Naftë (WTI):\n")
-cat("   Mesatarja e simuluar:", round(mean(sim_results$oil), 2), "\n")
-cat("   95% CI: [", round(quantile(sim_results$oil, 0.025), 2),
-    ",", round(quantile(sim_results$oil, 0.975), 2), "]\n")
+sim_summary <- sim_results |>
+  summarise(
+    across(everything(), list(
+      mean = ~ round(mean(.), 2),
+      ci_lower = ~ round(quantile(., 0.025), 2),
+      ci_upper = ~ round(quantile(., 0.975), 2)
+    ))
+  ) |>
+  pivot_longer(everything(), names_to = c("asset", ".value"), names_sep = "_")
 
-# Ari
-cat("🥇 Ar (Gold):\n")
-cat("   Mesatarja e simuluar:", round(mean(sim_results$gold), 2), "\n")
-cat("   95% CI: [", round(quantile(sim_results$gold, 0.025), 2),
-    ",", round(quantile(sim_results$gold, 0.975), 2), "]\n")
-
-# Dollari
-cat("💵 Dollar (DXY):\n")
-cat("   Mesatarja e simuluar:", round(mean(sim_results$dxy), 2), "\n")
-cat("   95% CI: [", round(quantile(sim_results$dxy, 0.025), 2),
-    ",", round(quantile(sim_results$dxy, 0.975), 2), "]\n")
+sim_summary |>
+  mutate(
+    label = case_when(
+      asset == "oil" ~ "🛢️  Naftë (WTI)",
+      asset == "gold" ~ "🥇 Ar (Gold)",
+      asset == "dxy" ~ "💵 Dollar (DXY)"
+    )
+  ) |>
+  select(label, mean, ci_lower, ci_upper) |>
+  rowwise() |>
+  mutate(output = paste0(label, ":\n   Mesatarja e simuluar: ", mean,
+                         "\n   95% CI: [", ci_lower, ", ", ci_upper, "]\n")) |>
+  pull(output) |>
+  cat(sep = "\n")
 
 # ── KRAHASO ME REALITETIN ─────────────────────────────
 # Lexo të dhënat reale 2022-2024
-master_real <- read.csv("data/clean/master_2022_2024.csv") |>
-  mutate(date = as.Date(date))
+master_real <- read_csv("data/clean/master_2022_2024.csv") |>
+  mutate(date = ymd(date))
 
-real_oil_end  <- tail(master_real$price_wti,  1)
-real_gold_end <- tail(master_real$price_gold, 1)
-real_dxy_end  <- tail(master_real$dxy,        1)
+real_values <- master_real |>
+  summarise(
+    oil  = last(price_wti),
+    gold = last(price_gold),
+    dxy  = last(dxy)
+  )
+
+sim_means <- sim_results |>
+  summarise(across(everything(), mean))
 
 cat("\n📈 Krahasimi Simulim vs Realitet (Dhjetor 2024):\n\n")
+
+comparison <- tibble(
+  asset = c("Naftë", "Ar", "Dollar"),
+  simulated = c(sim_means$oil, sim_means$gold, sim_means$dxy),
+  real = c(real_values$oil, real_values$gold, real_values$dxy)
+) |>
+  mutate(error_pct = round(abs(simulated - real) / real * 100, 1))
+
 cat("        | Simuluar (mesatare) | Real   | Gabimi\n")
 cat("--------|---------------------|--------|--------\n")
-cat("Naftë   |", round(mean(sim_results$oil),  2),
-    "             |", real_oil_end,
-    "|", round(abs(mean(sim_results$oil)  - real_oil_end)  / real_oil_end  * 100, 1), "%\n")
-cat("Ar      |", round(mean(sim_results$gold), 2),
-    "            |", real_gold_end,
-    "|", round(abs(mean(sim_results$gold) - real_gold_end) / real_gold_end * 100, 1), "%\n")
-cat("Dollar  |", round(mean(sim_results$dxy),  2),
-    "              |", real_dxy_end,
-    "|", round(abs(mean(sim_results$dxy)  - real_dxy_end)  / real_dxy_end  * 100, 1), "%\n")
-
-
-
-
-
-
+comparison |>
+  rowwise() |>
+  mutate(line = sprintf("%-7s | %-19.2f | %-6.2f | %.1f%%\n", 
+                        asset, simulated, real, error_pct)) |>
+  pull(line) |>
+  cat()
 
 # ── BLLOKU 4: SIMULIMI HORMUZ 2026 ───────────────────
 # Çfarë bën: injekton shok të jashtëm (krizë Hormuz)
 # dhe simulon 12 muaj nga Janar 2026
 
-# Çmimet fillestare — Dhjetor 2024 (real)
-S0_oil_2026  <- real_oil_end
-S0_gold_2026 <- real_gold_end
-S0_dxy_2026  <- real_dxy_end
+S0_2026 <- real_values
 
 set.seed(123)
 
 # Simulim BEZ shok Hormuz — baseline
 sim_baseline <- simulate_paths(
-  S0_oil_2026, S0_gold_2026, S0_dxy_2026,
-  mu_oil, mu_gold, mu_dxy,
-  sigma_oil, sigma_gold, sigma_dxy,
+  S0_2026$oil, S0_2026$gold, S0_2026$dxy,
+  params_gbm$mu[1], params_gbm$mu[2], params_gbm$mu[3],
+  params_gbm$sigma[1], params_gbm$sigma[2], params_gbm$sigma[3],
   cor_matrix,
   T = 12, n_sim = 10000,
   crisis_shock = FALSE
@@ -215,114 +200,102 @@ sim_baseline <- simulate_paths(
 
 # Simulim ME shok Hormuz
 sim_hormuz <- simulate_paths(
-  S0_oil_2026, S0_gold_2026, S0_dxy_2026,
-  mu_oil, mu_gold, mu_dxy,
-  sigma_oil, sigma_gold, sigma_dxy,
+  S0_2026$oil, S0_2026$gold, S0_2026$dxy,
+  params_gbm$mu[1], params_gbm$mu[2], params_gbm$mu[3],
+  params_gbm$sigma[1], params_gbm$sigma[2], params_gbm$sigma[3],
   cor_matrix,
   T = 12, n_sim = 10000,
   crisis_shock = TRUE
 )
 
-cat("🌊 Parashikimi Hormuz 2026 (12 muaj):\n\n")
+cat("\n🌊 Parashikimi Hormuz 2026 (12 muaj):\n\n")
+
+hormuz_summary <- tibble(
+  asset = c("oil", "gold", "dxy"),
+  label = c("Naftë  ", "Ar     ", "Dollar "),
+  baseline = c(mean(sim_baseline$oil), mean(sim_baseline$gold), mean(sim_baseline$dxy)),
+  hormuz = c(mean(sim_hormuz$oil), mean(sim_hormuz$gold), mean(sim_hormuz$dxy))
+) |>
+  mutate(diff_pct = round((hormuz - baseline) / baseline * 100, 1))
+
 cat("              | Baseline        | Hormuz Crisis   | Ndryshimi\n")
 cat("--------------|-----------------|-----------------|----------\n")
-
-for (asset in c("oil", "gold", "dxy")) {
-  label <- switch(asset,
-                  "oil"  = "Naftë  ",
-                  "gold" = "Ar     ",
-                  "dxy"  = "Dollar "
-  )
-  b_mean <- round(mean(sim_baseline[[asset]]), 2)
-  h_mean <- round(mean(sim_hormuz[[asset]]),   2)
-  diff   <- round((h_mean - b_mean) / b_mean * 100, 1)
-  
-  cat(label, "       |", b_mean,
-      "          |", h_mean,
-      "          |", diff, "%\n")
-}
-
-
-
-
-
-
+hormuz_summary |>
+  rowwise() |>
+  mutate(line = sprintf("%-13s | %-15.2f | %-15.2f | %.1f%%\n",
+                        label, baseline, hormuz, diff_pct)) |>
+  pull(line) |>
+  cat()
 
 # ── BLLOKU 5: VIZUALIZIMI FINAL ───────────────────────
-library(tidyr)
 
-# Krijo data frame për vizualizim
-hormuz_df <- data.frame(
-  asset     = c("Naftë", "Ar", "Dollar"),
-  baseline  = c(mean(sim_baseline$oil),
-                mean(sim_baseline$gold),
-                mean(sim_baseline$dxy)),
-  hormuz    = c(mean(sim_hormuz$oil),
-                mean(sim_hormuz$gold),
-                mean(sim_hormuz$dxy))
-) |>
+# Data frame për vizualizim — Hormuz comparison
+hormuz_df <- hormuz_summary |>
+  select(asset, label, baseline, hormuz) |>
   pivot_longer(cols = c(baseline, hormuz),
-               names_to  = "scenario",
+               names_to = "scenario",
                values_to = "price") |>
-  mutate(scenario = recode(scenario,
-                           "baseline" = "Baseline (Pa Krizë)",
-                           "hormuz"   = "Krizë Hormuz 2026"
-  ))
+  mutate(
+    scenario = recode(scenario,
+                      "baseline" = "Baseline (Pa Krizë)",
+                      "hormuz" = "Krizë Hormuz 2026"),
+    asset = recode(asset,
+                   "oil" = "Naftë",
+                   "gold" = "Ar",
+                   "dxy" = "Dollar")
+  )
 
-ggplot(hormuz_df, aes(x = scenario, y = price, fill = scenario)) +
-  geom_bar(stat = "identity", width = 0.5, alpha = 0.85) +
+# Grafiku 1 — Bar plot krahasues
+p1 <- ggplot(hormuz_df, aes(x = scenario, y = price, fill = scenario)) +
+  geom_col(width = 0.5, alpha = 0.85) +
   geom_text(aes(label = round(price, 0)),
             vjust = -0.5, size = 4, fontface = "bold") +
   scale_fill_manual(values = c(
     "Baseline (Pa Krizë)" = "#2980B9",
-    "Krizë Hormuz 2026"   = "#E74C3C"
+    "Krizë Hormuz 2026" = "#E74C3C"
   )) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
   facet_wrap(~asset, scales = "free_y") +
   labs(
-    title    = "Parashikimi Monte Carlo — Krizë Hormuz 2026",
+    title = "Parashikimi Monte Carlo — Krizë Hormuz 2026",
     subtitle = "10,000 skenarë | 12 muaj | Baseline vs Krizë",
     x = "", y = "Çmimi i Parashikuar", fill = ""
   ) +
   theme_minimal() +
   theme(
-    legend.position  = "top",
-    axis.text.x      = element_blank(),
-    axis.ticks.x     = element_blank()
+    legend.position = "top",
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
   )
 
-ggsave("output/07_hormuz_forecast.png", width = 10, height = 5)
-cat("✅ Grafiku u ruajt\n")
-
-ggsave("output/07_hormuz_forecast.png", width = 10, height = 5)
+ggsave("output/07_hormuz_forecast.png", plot = p1, width = 10, height = 5, dpi = 300)
 
 # Grafiku 2 — Shpërndarja e Skenarëve
-sim_compare <- data.frame(
-  oil_base   = sim_baseline$oil,
-  oil_hormuz = sim_hormuz$oil,
-  gold_base  = sim_baseline$gold,
-  gold_hormuz= sim_hormuz$gold
-)
+sim_compare <- tibble(
+  oil_base = sim_baseline$oil,
+  oil_hormuz = sim_hormuz$oil
+) |>
+  pivot_longer(everything(), names_to = "scenario", values_to = "price") |>
+  mutate(scenario = recode(scenario,
+                           "oil_base" = "Baseline",
+                           "oil_hormuz" = "Hormuz"))
 
-ggplot(sim_compare) +
-  geom_density(aes(x = oil_base,   fill = "Baseline"),
-               alpha = 0.5) +
-  geom_density(aes(x = oil_hormuz, fill = "Hormuz"),
-               alpha = 0.5) +
-  geom_vline(xintercept = real_oil_end,
+p2 <- ggplot(sim_compare, aes(x = price, fill = scenario)) +
+  geom_density(alpha = 0.5) +
+  geom_vline(xintercept = real_values$oil,
              linetype = "dashed", color = "black") +
   scale_fill_manual(values = c(
     "Baseline" = "#2980B9",
-    "Hormuz"   = "#E74C3C"
+    "Hormuz" = "#E74C3C"
   )) +
   labs(
-    title    = "Shpërndarja e Skenarëve — Naftë 2026",
-    subtitle = "Vija e zezë = çmimi real Dhjetor 2024 ($70.12)",
+    title = "Shpërndarja e Skenarëve — Naftë 2026",
+    subtitle = paste0("Vija e zezë = çmimi real Dhjetor 2024 ($", round(real_values$oil, 2), ")"),
     x = "Çmimi WTI ($)", y = "Densiteti",
     fill = ""
   ) +
   theme_minimal() +
   theme(legend.position = "top")
 
-ggsave("output/08_density_oil.png", width = 8, height = 5)
+ggsave("output/08_density_oil.png", plot = p2, width = 8, height = 5, dpi = 300)
 cat("✅ Grafikët u ruajtën në output/\n")

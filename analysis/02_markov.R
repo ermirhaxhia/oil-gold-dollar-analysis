@@ -1,8 +1,10 @@
-library(dplyr)
+library(tidyverse)
+library(lubridate)
+library(DiagrammeR)
 
 # ── LEXO TË DHËNAT ────────────────────────────────────
-master <- read.csv("data/clean/master_2006_2022.csv") |>
-  mutate(date = as.Date(date))
+master <- read_csv("data/clean/master_2006_2022.csv") |>
+  mutate(date = ymd(date))
 
 # ── LLOGARIT KTHIMET MUJORE ───────────────────────────
 master <- master |>
@@ -16,8 +18,6 @@ master <- master |>
 
 # ── KONTROLLO ─────────────────────────────────────────
 head(master, 3)
-
-
 
 # ── BLLOKU 3: KLASIFIKO REGJIMED ─────────────────────
 # Çdo muaj merr një etiketë bazuar në drejtimin e 3 variablave
@@ -40,73 +40,68 @@ master <- master |>
     )
   )
 
-
-
 # ── BLLOKU 4: MATRICA E TRANZICIONIT P ───────────────
 # Çfarë bën: numëron sa herë sistemi kaloi nga regjimi X → regjimi Y
 # pastaj e ndan me totalin e rreshtit për të marrë probabilitetet
 
 # Krijo çiftet: regjimi aktual dhe regjimi i muajit tjetër
-transitions <- data.frame(
+transitions <- tibble(
   from = master$regime[-nrow(master)],    # muaji aktual
-  to   = master$regime[-1]               # muaji tjetër
+  to   = master$regime[-1]                # muaji tjetër
 )
 
-# Numëro kalimet
+# Numëro kalimet dhe konverto në tibble
 count_matrix <- table(transitions$from, transitions$to)
 cat("Numri i kalimeve:\n")
+print(count_matrix)
 
 # Normalizimi — pjesëto çdo rresht me totalin e tij
-P <- count_matrix / rowSums(count_matrix)
+P_matrix <- count_matrix / rowSums(count_matrix)
 cat("\nMatrica e Tranzicionit P:\n")
-
+print(round(P_matrix, 3))
 
 # ── BLLOKU 5: SHPËRNDARJA STACIONARE π ───────────────
 # Çfarë bën: gjen probabilitetin afatgjatë të çdo regjimi
 # Zgjidhim: π = π × P  me kushtin  sum(π) = 1
 
-# Metoda: eigenvalues e matricës P
-P_matrix <- t(as.matrix(P))
+# Metoda: eigenvalues e matricës P (transponuar për zgjidhje të saktë)
+P_t <- t(as.matrix(P_matrix))
 
 # Gjej eigenvektorin për eigenvalue = 1
-eig <- eigen(P_matrix)
+eig <- eigen(P_t)
 pi_vector <- Re(eig$vectors[, 1])
 pi_vector <- pi_vector / sum(pi_vector)
 
 # Emërto
-names(pi_vector) <- rownames(P)
+names(pi_vector) <- rownames(P_matrix)
 
-cat("Shpërndarja Stacionare π:\n")
+cat("\nShpërndarja Stacionare π:\n")
 print(round(pi_vector, 3))
 cat("\nInterpretim: sistemi kalon këtë % të kohës në çdo regjim afatgjatë\n")
 
-
 # ── RUAJ MASTER ME REGIME ─────────────────────────────
-write.csv(master, "data/clean/master_2006_2022.csv", row.names = FALSE)
+write_csv(master, "data/clean/master_2006_2022.csv")
 cat("✅ master_2006_2022.csv u përditësua me kolonën regime\n")
 
-
-
 # ── BLLOKU 6: VIZUALIZIM ──────────────────────────────
-library(ggplot2)
 
 # Grafiku 1 — Regjimed në kohë
-ggplot(master, aes(x = date, y = regime, color = regime)) +
+p1 <- ggplot(master, aes(x = date, y = regime, color = regime)) +
   geom_point(size = 2) +
   labs(title = "Regjimed e Tregut 2006-2022",
        x = "Data", y = "Regjimi") +
   theme_minimal() +
   theme(legend.position = "none")
 
-ggsave("output/01_regjimet.png", width = 10, height = 4)
+ggsave("output/01_regjimet.png", plot = p1, width = 10, height = 4, dpi = 300)
 
 # Grafiku 2 — Shpërndarja Stacionare
-pi_df <- data.frame(
+pi_df <- tibble(
   regime = names(pi_vector),
   value  = as.numeric(pi_vector)
 )
 
-ggplot(pi_df, aes(x = regime, y = value, fill = regime)) +
+p2 <- ggplot(pi_df, aes(x = regime, y = value, fill = regime)) +
   geom_bar(stat = "identity") +
   geom_text(aes(label = paste0(round(value*100, 1), "%")), 
             vjust = -0.5) +
@@ -115,15 +110,21 @@ ggplot(pi_df, aes(x = regime, y = value, fill = regime)) +
   theme_minimal() +
   theme(legend.position = "none")
 
-ggsave("output/02_stacionare.png", width = 6, height = 4)
+ggsave("output/02_stacionare.png", plot = p2, width = 6, height = 4, dpi = 300)
 
 cat("✅ Grafika u ruajtën në output/\n")
 
+# ── DIAGRAMI I RRJETIT MARKOV ─────────────────────────
+# Krijo dataframe për probabilitetet
+prob_labels <- as.data.frame(P_matrix) |>
+  as_tibble() |>
+  rename(from = Var1, to = Var2, prob = Freq) |>
+  mutate(
+    prob_label = sprintf("%.2f", round(prob, 2)),
+    prob_scaled = prob * 3  # për trashësinë e vijave
+  )
 
-
-
-
-library(DiagrammeR)
+# Krijo graf me DiagrammeR
 grViz("
 digraph markov {
 
