@@ -252,7 +252,7 @@ Departamenti i Matematikës së Aplikuar · FSHN · Universiteti i Tiranës
 | 📧 Email | ermir.haxhia10@gmail.com |
 | 💼 LinkedIn | [linkedin.com/in/ermir-haxhia-b988212b5](https://www.linkedin.com/in/ermir-haxhia-b988212b5) |
 | 🐙 GitHub | [github.com/ermirhaxhia](https://github.com/ermirhaxhia) |
-| 🌐 Portfolio | [ermir-haxhia.vercel.app](https://ermir-haxhia.vercel.app) |
+| 🌐 Portfolio | [ermir-haxhia.vercel.app]([https://ermir-haxhia.vercel.app](https://infrequent-network-348.notion.site/Ermir-Haxhia-Data-Analysis-Portfolio-32c61957cde1800ebff6d7c1190170ae)) |
 
 ---
 
